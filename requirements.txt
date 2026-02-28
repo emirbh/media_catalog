@@ -1,0 +1,5 @@
+# EXIF metadata extraction — supports JPEG, TIFF, RAW (CR2, NEF, ARW, DNG), HEIC, MP4/MOV
+exifread==3.0.0
+
+# Progress bar
+tqdm==4.66.4
