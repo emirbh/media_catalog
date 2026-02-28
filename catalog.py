@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from catalog_store import CatalogStore
 from copier import build_destination_path, copy_file
+from excludes import Excludes, build_excludes
 from exif_reader import get_media_date
 from hasher import compute_hash
 from models import FileRecord, ScanSummary
@@ -63,18 +64,19 @@ def process_source(
     dry_run: bool,
     verbose: bool,
     use_progress: bool,
+    excludes: Excludes,
 ) -> ScanSummary:
     """Full scan-and-copy pipeline for one source directory."""
     summary = ScanSummary(source_path=str(source_path))
 
     if use_progress:
         print(f"\nCounting files in {source_path} ...")
-    total = count_media_files(source_path)
+    total = count_media_files(source_path, excludes=excludes)
 
     copies_since_save = 0
 
     with _make_bar(total, desc=str(source_path.name), use_progress=use_progress) as bar:
-        for file_path, media_type in scan_directory(source_path):
+        for file_path, media_type in scan_directory(source_path, excludes=excludes):
             summary.files_scanned += 1
             bar.update(1)
             bar.set_postfix(
@@ -195,6 +197,13 @@ def build_parser() -> argparse.ArgumentParser:
             "  python catalog.py --source /Volumes/SD1 --target ~/MediaBackup\n"
             "  python catalog.py --source /Volumes/SD1 /Volumes/USB --target ~/MediaBackup --dry-run\n"
             "  python catalog.py --source /Volumes/GoPro --target ~/MediaBackup --hash md5 --verbose\n"
+            "  python catalog.py --source /Volumes/SD1 --target ~/MediaBackup --exclude dqhelper *.db\n"
+            "\n"
+            "Exclude file format (one pattern per line, # = comment):\n"
+            "  dqhelper          skip any directory or file named 'dqhelper'\n"
+            "  PRIVATE/          skip directories named 'PRIVATE' only\n"
+            "  *.db              skip files with .db extension\n"
+            "  .tmp              same as *.tmp\n"
         ),
     )
     parser.add_argument(
@@ -237,6 +246,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-progress",
         action="store_true",
         help="Disable progress bars (useful when piping output to log files).",
+    )
+    parser.add_argument(
+        "--exclude",
+        nargs="+",
+        metavar="PATTERN",
+        default=[],
+        help=(
+            "One or more patterns to exclude. Supports directory names "
+            "(dqhelper), extensions (*.db or .db), and trailing-slash "
+            "directory markers (PRIVATE/). Combined with the 'exclude' file."
+        ),
+    )
+    parser.add_argument(
+        "--exclude-file",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to an exclude-patterns file "
+            "(default: 'exclude' in the current directory)."
+        ),
     )
     return parser
 
