@@ -299,6 +299,20 @@ def main() -> None:
 
     use_progress = not args.no_progress
 
+    # Build excludes
+    from excludes import DEFAULT_EXCLUDE_FILE
+    exclude_file = (
+        Path(args.exclude_file).expanduser().resolve()
+        if args.exclude_file
+        else Path.cwd() / DEFAULT_EXCLUDE_FILE
+    )
+    excludes = build_excludes(
+        cli_patterns=args.exclude,
+        exclude_file=exclude_file,
+    )
+    if not excludes.is_empty():
+        print(f"Excludes : {excludes.describe()}")
+
     # Load catalog
     store = CatalogStore(catalog_path)
     print(f"Catalog: {catalog_path}  ({store.record_count():,} existing entries)")
@@ -318,6 +332,7 @@ def main() -> None:
             dry_run=args.dry_run,
             verbose=args.verbose,
             use_progress=use_progress,
+            excludes=excludes,
         )
         summaries.append(summary)
 
