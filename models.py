@@ -5,21 +5,21 @@ from typing import List, Tuple
 @dataclass
 class FileRecord:
     hash: str
-    original_path: str
+    source_locations: List[str]  # every source path where this file has been found
     destination_path: str
-    media_type: str          # "image" or "video"
+    category: str            # "images", "videos", "documents", "screenshots", etc.
     extension: str           # lowercase, e.g. ".jpg"
-    date_taken: str          # ISO date "YYYY-MM-DD"
-    date_source: str         # "exif" or "mtime"
+    date_taken: str          # ISO date "YYYY-MM-DD" (from EXIF or filesystem)
+    date_source: str         # "exif", "birthtime", "ctime", or "mtime"
     file_size_bytes: int
-    cataloged_at: str        # ISO datetime of catalog insertion
+    cataloged_at: str        # ISO datetime of first catalog insertion
 
     def to_dict(self) -> dict:
         return {
             "hash": self.hash,
-            "original_path": self.original_path,
+            "source_locations": self.source_locations,
             "destination_path": self.destination_path,
-            "media_type": self.media_type,
+            "category": self.category,
             "extension": self.extension,
             "date_taken": self.date_taken,
             "date_source": self.date_source,
@@ -29,11 +29,20 @@ class FileRecord:
 
     @staticmethod
     def from_dict(d: dict) -> "FileRecord":
+        # Backward-compat: old catalogs stored a single "original_path" string
+        if "source_locations" in d:
+            locations = d["source_locations"]
+        elif "original_path" in d:
+            locations = [d["original_path"]]
+        else:
+            locations = []
+
         return FileRecord(
             hash=d["hash"],
-            original_path=d["original_path"],
+            source_locations=locations,
             destination_path=d["destination_path"],
-            media_type=d["media_type"],
+            # Backward-compat: old catalogs used "media_type" key
+            category=d.get("category") or d.get("media_type", "others"),
             extension=d["extension"],
             date_taken=d["date_taken"],
             date_source=d["date_source"],

@@ -1,7 +1,6 @@
 """
 Shared fixtures for the media-catalog test suite.
 """
-import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -17,14 +16,6 @@ def make_file(path: Path, content: bytes = b"dummy content") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
-
-
-def make_image(path: Path, content: bytes = b"fake jpeg data") -> Path:
-    return make_file(path, content)
-
-
-def make_video(path: Path, content: bytes = b"fake mp4 data") -> Path:
-    return make_file(path, content)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -49,9 +40,9 @@ def tgt(tmp_path: Path) -> Path:
 def sample_record() -> FileRecord:
     return FileRecord(
         hash="abc123",
-        original_path="/src/photo.jpg",
-        destination_path="/tgt/images/2024/03/15/photo.jpg",
-        media_type="image",
+        source_locations=["/src/photo.jpg"],
+        destination_path="/tgt/images/photo.jpg",
+        category="images",
         extension=".jpg",
         date_taken="2024-03-15",
         date_source="exif",

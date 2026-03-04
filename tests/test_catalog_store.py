@@ -8,12 +8,12 @@ from catalog_store import CATALOG_FILENAME, CatalogStore
 from models import FileRecord
 
 
-def _make_record(hash_val: str = "abc123", media_type: str = "image") -> FileRecord:
+def _make_record(hash_val: str = "abc123", category: str = "images") -> FileRecord:
     return FileRecord(
         hash=hash_val,
-        original_path=f"/src/{hash_val}.jpg",
-        destination_path=f"/tgt/images/2024/01/01/{hash_val}.jpg",
-        media_type=media_type,
+        source_locations=[f"/src/{hash_val}.jpg"],
+        destination_path=f"/tgt/images/{hash_val}.jpg",
+        category=category,
         extension=".jpg",
         date_taken="2024-01-01",
         date_source="exif",
@@ -91,9 +91,9 @@ class TestContainsAddGet:
         rec1 = _make_record("dup")
         rec2 = FileRecord(
             hash="dup",
-            original_path="/other.jpg",
+            source_locations=["/other.jpg"],
             destination_path="/tgt/other.jpg",
-            media_type="image",
+            category="images",
             extension=".jpg",
             date_taken="2025-06-01",
             date_source="mtime",
@@ -172,3 +172,48 @@ class TestSave:
         store = CatalogStore(path)
         store.save()
         assert path.exists()
+
+
+# ── add_location ──────────────────────────────────────────────────────────────
+
+class TestAddLocation:
+    def test_adds_new_path(self, tmp_path):
+        store = CatalogStore(tmp_path / "c.json")
+        store.add(_make_record("myhash"))
+        result = store.add_location("myhash", "/drive2/photo.jpg")
+        assert result is True
+        rec = store.get("myhash")
+        assert "/drive2/photo.jpg" in rec.source_locations
+
+    def test_duplicate_path_not_added(self, tmp_path):
+        store = CatalogStore(tmp_path / "c.json")
+        store.add(_make_record("myhash"))
+        store.add_location("myhash", "/drive2/photo.jpg")
+        result = store.add_location("myhash", "/drive2/photo.jpg")
+        assert result is False
+        rec = store.get("myhash")
+        assert rec.source_locations.count("/drive2/photo.jpg") == 1
+
+    def test_unknown_hash_returns_false(self, tmp_path):
+        store = CatalogStore(tmp_path / "c.json")
+        assert store.add_location("nonexistent", "/some/path.jpg") is False
+
+    def test_locations_persist_after_save_reload(self, tmp_path):
+        path = tmp_path / "catalog.json"
+        store = CatalogStore(path)
+        store.add(_make_record("myhash"))
+        store.add_location("myhash", "/drive2/photo.jpg")
+        store.save()
+
+        store2 = CatalogStore(path)
+        rec = store2.get("myhash")
+        assert "/drive2/photo.jpg" in rec.source_locations
+
+    def test_original_location_preserved(self, tmp_path):
+        store = CatalogStore(tmp_path / "c.json")
+        rec = _make_record("myhash")
+        store.add(rec)
+        store.add_location("myhash", "/drive2/photo.jpg")
+        result_locs = store.get("myhash").source_locations
+        assert f"/src/myhash.jpg" in result_locs
+        assert "/drive2/photo.jpg" in result_locs

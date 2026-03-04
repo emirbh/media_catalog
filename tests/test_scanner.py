@@ -1,81 +1,67 @@
-"""Tests for scanner.py — classify_file, scan_directory, count_media_files."""
+"""Tests for scanner.py — scan_directory, count_files."""
 from pathlib import Path
 
 import pytest
 
+from categories import CATEGORY_OTHERS
 from excludes import Excludes
-from scanner import classify_file, count_media_files, scan_directory
+from scanner import count_files, scan_directory
 from tests.conftest import make_file
 
 
-# ── classify_file ─────────────────────────────────────────────────────────────
-
-class TestClassifyFile:
-    @pytest.mark.parametrize("ext", [
-        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif",
-        ".heic", ".heif", ".webp", ".raw", ".cr2", ".nef", ".arw", ".dng",
-    ])
-    def test_image_extensions(self, tmp_path, ext):
-        assert classify_file(tmp_path / f"photo{ext}") == "image"
-
-    @pytest.mark.parametrize("ext", [
-        ".mp4", ".mov", ".avi", ".mkv", ".m4v", ".wmv",
-        ".flv", ".webm", ".mts", ".m2ts", ".3gp",
-    ])
-    def test_video_extensions(self, tmp_path, ext):
-        assert classify_file(tmp_path / f"clip{ext}") == "video"
-
-    def test_unknown_extension_returns_none(self, tmp_path):
-        assert classify_file(tmp_path / "doc.pdf") is None
-        assert classify_file(tmp_path / "data.db") is None
-        assert classify_file(tmp_path / "script.py") is None
-
-    def test_case_insensitive(self, tmp_path):
-        assert classify_file(tmp_path / "photo.JPG") == "image"
-        assert classify_file(tmp_path / "clip.MP4") == "video"
-        assert classify_file(tmp_path / "photo.Jpg") == "image"
-
-    def test_no_extension(self, tmp_path):
-        assert classify_file(tmp_path / "README") is None
-
-
-# ── scan_directory ─────────────────────────────────────────────────────────────
+# ── scan_directory ────────────────────────────────────────────────────────────
 
 class TestScanDirectory:
-    def test_yields_images(self, src):
+    def test_yields_images_with_correct_category(self, src):
         make_file(src / "photo.jpg")
         make_file(src / "raw.cr2")
-        results = list(scan_directory(src))
-        paths = [p for p, _ in results]
-        types = [t for _, t in results]
-        assert src / "photo.jpg" in paths
-        assert src / "raw.cr2" in paths
-        assert all(t == "image" for t in types)
+        results = dict(scan_directory(src))
+        assert results[src / "photo.jpg"] == "images"
+        assert results[src / "raw.cr2"] == "images"
 
-    def test_yields_videos(self, src):
+    def test_yields_videos_with_correct_category(self, src):
         make_file(src / "clip.mp4")
-        make_file(src / "movie.mov")
-        results = list(scan_directory(src))
-        types = {t for _, t in results}
-        assert types == {"video"}
+        results = dict(scan_directory(src))
+        assert results[src / "clip.mp4"] == "videos"
 
-    def test_yields_mixed_media(self, src):
+    def test_yields_documents(self, src):
+        make_file(src / "report.pdf")
+        results = dict(scan_directory(src))
+        assert results[src / "report.pdf"] == "documents"
+
+    def test_yields_screenshots(self, src):
+        make_file(src / "capture.png")
+        results = dict(scan_directory(src))
+        assert results[src / "capture.png"] == "screenshots"
+
+    def test_yields_music_files(self, src):
+        make_file(src / "track.mp3")
+        results = dict(scan_directory(src))
+        assert results[src / "track.mp3"] == "music-files"
+
+    def test_yields_web_pages(self, src):
+        make_file(src / "index.html")
+        results = dict(scan_directory(src))
+        assert results[src / "index.html"] == "web-pages"
+
+    def test_yields_others_for_unknown_extension(self, src):
+        make_file(src / "mystery.xyz")
+        results = dict(scan_directory(src))
+        assert results[src / "mystery.xyz"] == CATEGORY_OTHERS
+
+    def test_yields_all_file_types(self, src):
         make_file(src / "photo.jpg")
         make_file(src / "clip.mp4")
+        make_file(src / "report.pdf")
+        make_file(src / "song.mp3")
+        make_file(src / "page.html")
+        make_file(src / "weird.xyz")
         results = list(scan_directory(src))
-        assert len(results) == 2
-        assert {t for _, t in results} == {"image", "video"}
-
-    def test_ignores_non_media_files(self, src):
-        make_file(src / "photo.jpg")
-        make_file(src / "notes.txt")
-        make_file(src / "data.db")
-        results = list(scan_directory(src))
-        assert len(results) == 1
+        assert len(results) == 6
 
     def test_recurses_into_subdirectories(self, src):
         make_file(src / "2024" / "03" / "photo.jpg")
-        make_file(src / "2023" / "clip.mp4")
+        make_file(src / "archive" / "clip.mp4")
         results = list(scan_directory(src))
         assert len(results) == 2
 
@@ -86,7 +72,6 @@ class TestScanDirectory:
 
     def test_skips_hidden_directories(self, src):
         make_file(src / ".Spotlight-V100" / "photo.jpg")
-        make_file(src / ".DS_Store_dir" / "clip.mp4")
         results = list(scan_directory(src))
         assert results == []
 
@@ -110,6 +95,27 @@ class TestScanDirectory:
     def test_empty_directory(self, src):
         assert list(scan_directory(src)) == []
 
+    def test_skips_file_deleted_during_scan(self, src):
+        from unittest.mock import patch
+        f = make_file(src / "photo.jpg")
+        
+        # Simulate the file being deleted right before stat() is called for size validation
+        original_stat = Path.stat
+        call_count = 0
+        def mock_stat(self, **kwargs):
+            nonlocal call_count
+            if self == f:
+                call_count += 1
+                # Fail on the 4th stat() call, which corresponds to file_path.stat().st_size
+                # is_dir() -> is_file() -> is_symlink() -> stat().st_size
+                if call_count >= 4:
+                    raise FileNotFoundError(f"No such file or directory: '{self}'")
+            return original_stat(self, **kwargs)
+            
+        with patch.object(Path, "stat", mock_stat):
+            results = list(scan_directory(src))
+        assert results == []
+
     def test_exclude_directory_by_name(self, src):
         make_file(src / "dqhelper" / "photo.jpg")
         make_file(src / "photos" / "other.jpg")
@@ -128,7 +134,6 @@ class TestScanDirectory:
 
     def test_exclude_file_extension(self, src):
         make_file(src / "photo.jpg")
-        make_file(src / "thumb.db")   # db is not a media ext, already skipped
         make_file(src / "raw.dng")
         ex = Excludes(["*.dng"])
         results = list(scan_directory(src, excludes=ex))
@@ -138,24 +143,25 @@ class TestScanDirectory:
     def test_no_excludes_yields_all(self, src):
         make_file(src / "a.jpg")
         make_file(src / "b.mp4")
-        make_file(src / "c.cr2")
+        make_file(src / "c.pdf")
         assert len(list(scan_directory(src))) == 3
 
 
-# ── count_media_files ─────────────────────────────────────────────────────────
+# ── count_files ────────────────────────────────────────────────────────────────
 
-class TestCountMediaFiles:
-    def test_counts_correctly(self, src):
+class TestCountFiles:
+    def test_counts_all_file_types(self, src):
         make_file(src / "a.jpg")
         make_file(src / "b.mp4")
-        make_file(src / "c.txt")   # not counted
-        assert count_media_files(src) == 2
+        make_file(src / "c.txt")
+        make_file(src / "d.xyz")
+        assert count_files(src) == 4
 
     def test_empty_directory(self, src):
-        assert count_media_files(src) == 0
+        assert count_files(src) == 0
 
     def test_respects_excludes(self, src):
         make_file(src / "a.jpg")
         make_file(src / "skip" / "b.jpg")
         ex = Excludes(["skip"])
-        assert count_media_files(src, excludes=ex) == 1
+        assert count_files(src, excludes=ex) == 1

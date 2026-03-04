@@ -70,6 +70,21 @@ class CatalogStore:
         """Insert a new FileRecord keyed by its hash."""
         self._entries[record.hash] = record.to_dict()
 
+    def add_location(self, file_hash: str, new_path: str) -> bool:
+        """
+        Append new_path to the source_locations list of an existing entry.
+        Returns True if the path was new and added, False if already present
+        or if the hash is not in the catalog.
+        """
+        entry = self._entries.get(file_hash)
+        if entry is None:
+            return False
+        locations = entry.setdefault("source_locations", [])
+        if new_path not in locations:
+            locations.append(new_path)
+            return True
+        return False
+
     def get(self, file_hash: str) -> Optional[FileRecord]:
         """Return the FileRecord for a hash, or None."""
         entry = self._entries.get(file_hash)
