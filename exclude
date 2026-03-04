@@ -1,0 +1,13 @@
+# System / utility directories
+dqhelper
+RECYCLER/
+Movies
+System Volume Information/
+
+# Junk files
+*.db
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+
